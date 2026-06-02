@@ -1,0 +1,36 @@
+# 敏感信息
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# 模型与索引（体积大，运行时自动下载/构建）
+data/processed/*.index
+data/processed/*.pkl
+data/processed/*.db
+data/processed/*.csv
+data/processed/*.json
+data/processed/*.txt
+data/knowledge/
+data/eval_sets/
+data/raw/
+
+# 系统文件
+.DS_Store
+.DS_Store?
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# 日志
+*.log
+logs/
