@@ -2,6 +2,7 @@
 import sys
 import os
 import subprocess
+import traceback
 from pathlib import Path
 
 # 项目根目录 = 本文件所在目录
@@ -58,7 +59,13 @@ if not _is_ready():
     st.rerun()
 
 # ── 加载组件 ──────────────────────────────────────────────────────────
-from app.components.loader import load_all_components
+try:
+    from app.components.loader import load_all_components
+except Exception as e:
+    import streamlit as st
+    st.error(f"模块加载失败：{e}")
+    st.code(traceback.format_exc())
+    st.stop()
 
 # ── 全局样式 ──────────────────────────────────────────────────────────
 st.markdown("""
@@ -165,4 +172,8 @@ elif page == "📚 运营知识库":
 elif page == "🔬 检索评估看板":
     from app.views.evaluation_dashboard import render
 
-render(components)
+try:
+    render(components)
+except Exception as e:
+    st.error(f"页面渲染出错：{e}")
+    st.code(traceback.format_exc())

@@ -1,4 +1,4 @@
-# Core ML
+# Core ML — v2 (force cache bust 20260603)
 torch>=2.0.0
 transformers>=4.40.0,<5.0.0
 sentence-transformers>=2.7.0
