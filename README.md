@@ -1,3 +1,15 @@
+---
+title: 内容电商 AI 增长解决方案
+emoji: 🚀
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: 1.35.0
+app_file: app/main.py
+pinned: false
+license: mit
+---
+
 # 内容电商 AI 增长解决方案
 
 > 面向中腰部内容电商品牌商家的 AI 经营增长平台 + 检索推荐基础设施

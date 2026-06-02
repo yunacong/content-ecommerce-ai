@@ -1,10 +1,14 @@
 """Streamlit 主入口：AI 经营增长平台 Demo"""
 import sys
+import os
+import subprocess
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# macOS ARM: LightGBM 必须在 FAISS 之前，Linux 无此问题但设置无害
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 import streamlit as st
-from app.components.loader import load_all_components
 
 st.set_page_config(
     page_title="内容电商 AI 增长平台",
@@ -12,6 +16,47 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ── 冷启动检测：HuggingFace Spaces 每次唤醒需重新构建数据 ──────────
+ROOT = Path(__file__).parent.parent
+PROCESSED = ROOT / "data" / "processed"
+
+def _is_ready() -> bool:
+    return (PROCESSED / "ecommerce.db").exists() and \
+           (PROCESSED / "products_faiss.index").exists() and \
+           (PROCESSED / "rag_index.index").exists()
+
+if not _is_ready():
+    st.markdown("## 🚀 首次启动，正在初始化...")
+    st.info("HuggingFace Spaces 冷启动需约 **5-8 分钟** 下载模型 + 构建索引，请耐心等待。")
+    progress = st.progress(0, text="准备数据...")
+
+    with st.spinner("Step 1/2：生成模拟数据..."):
+        r = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "prepare_data.py"), "--mode", "demo"],
+            capture_output=True, text=True, cwd=str(ROOT)
+        )
+        if r.returncode != 0:
+            st.error(f"数据准备失败：{r.stderr[-500:]}")
+            st.stop()
+    progress.progress(30, text="数据准备完成，正在下载模型并构建向量索引...")
+
+    with st.spinner("Step 2/2：下载模型 + 构建向量索引（约 4-6 分钟）..."):
+        r = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "build_index.py"), "--mode", "demo"],
+            capture_output=True, text=True, cwd=str(ROOT)
+        )
+        if r.returncode != 0:
+            st.error(f"索引构建失败：{r.stderr[-500:]}")
+            st.stop()
+    progress.progress(100, text="✅ 初始化完成！")
+
+    st.success("初始化完成！页面将自动刷新...")
+    st.balloons()
+    import time; time.sleep(2)
+    st.rerun()
+
+from app.components.loader import load_all_components
 
 # 全局样式 — 现代互联网风格
 st.markdown("""
