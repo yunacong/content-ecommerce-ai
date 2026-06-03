@@ -1,5 +1,5 @@
 ---
-title: 内容电商 AI 增长解决方案
+title: 内容电商商家 AI 运营助手
 emoji: 🚀
 colorFrom: blue
 colorTo: indigo
@@ -10,9 +10,9 @@ pinned: false
 license: mit
 ---
 
-# 内容电商 AI 增长解决方案
+# 内容电商商家 AI 运营助手 | RAG · LangGraph Agent · Text-to-SQL · CLIP
 
-> 面向中腰部内容电商品牌商家的 AI 经营增长平台 + 检索推荐基础设施
+> 面向内容电商商家的 ToB AI 运营助手，覆盖经营诊断、商品推荐、内容优化、行动计划的完整增长闭环
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.54-red)](https://streamlit.io)

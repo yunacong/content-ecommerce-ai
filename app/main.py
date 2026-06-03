@@ -11,7 +11,7 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 import streamlit as st
 
 st.set_page_config(
-    page_title="内容电商 AI 增长平台",
+    page_title="内容电商商家 AI 运营助手",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -182,22 +182,23 @@ components = load_all_components()
 st.sidebar.markdown("""
 <div style="padding: 8px 0 16px 0;">
   <div style="font-size: 22px; font-weight: 800; color: #f1f5f9; letter-spacing: -0.5px;">
-    🚀 内容电商 AI 平台
+    内容电商商家 AI 运营助手
   </div>
   <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
-    Content E-commerce AI Growth
+    RAG · LangGraph Agent · Text-to-SQL · CLIP
   </div>
 </div>
 <div style="background: rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.1);">
   <div style="font-size: 11px; color: #64748b; margin-bottom: 4px;">PROJECT STACK</div>
   <div style="font-size: 12px; color: #94a3b8; line-height: 1.8;">
-    BGE-M3 · CLIP · BM25<br>FAISS · BGE Reranker<br>LightGBM · SHAP · DeepSeek
+    BGE-M3 · CLIP · BM25<br>FAISS · BGE Reranker<br>LightGBM · SHAP · DeepSeek<br>LangGraph · Function Calling
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown('<div style="font-size:11px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;">功能模块</div>', unsafe_allow_html=True)
 page = st.sidebar.radio("", [
+    "🔗 AI 助手 · LangGraph",
     "🤖 AI 经营助手",
     "📊 经营数据分析",
     "🎨 内容诊断",
@@ -207,7 +208,9 @@ page = st.sidebar.radio("", [
 ], label_visibility="collapsed")
 
 # 路由
-if page == "🤖 AI 经营助手":
+if page == "🔗 AI 助手 · LangGraph":
+    from app.views.agent_graph_view import render
+elif page == "🤖 AI 经营助手":
     from app.views.agent_chat import render
 elif page == "📊 经营数据分析":
     from app.views.data_analysis import render

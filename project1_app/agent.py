@@ -4,6 +4,9 @@ from typing import List, Dict, Optional
 from openai import OpenAI
 from loguru import logger
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from project1_app.tools.merchant_rec_tool import recommend_products
+from project1_app.tools.review_insight_tool import get_review_insight
+from project1_app.action_plan.task_generator import generate_action_plan, format_action_plan_text
 
 
 # OpenAI-compatible function definitions（DeepSeek 原生 Function Calling 格式）
@@ -82,6 +85,98 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_review_insight",
+            "description": (
+                "获取指定商品的评论洞察：核心卖点、用户痛点、目标人群、内容角度、转化风险。"
+                "当用户问「这个SKU用户怎么评价」「内容应该打什么卖点」「选品有什么风险」时调用。"
+                "也可在商品推荐后调用，为推荐结果补充评论依据。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sku_id": {
+                        "type": "string",
+                        "description": "商品 SKU ID，如 SKU_023",
+                    },
+                    "use_llm": {
+                        "type": "boolean",
+                        "description": "是否使用 LLM 总结（默认 true，更准确）",
+                    },
+                },
+                "required": ["sku_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "merchant_recommend_products",
+            "description": (
+                "根据商家经营目标和当前问题，调用多模态推荐服务返回高潜力 SKU 排名。"
+                "当用户问「接下来推什么品」、「GMV下滑推荐什么商品」、「哪些SKU有放量空间」时调用。"
+                "调用前应先通过 query_data 完成经营诊断，用诊断结论填充参数。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "business_goal": {
+                        "type": "string",
+                        "description": "经营目标，如：提升GMV / 提升CTR / 提升CVR / 清库存 / 新品冷启动",
+                    },
+                    "problem_type": {
+                        "type": "string",
+                        "description": "当前问题类型，如：CVR下降 / CTR下降 / 曝光下降 / 客单价下降 / 综合指标下滑",
+                    },
+                    "target_category": {
+                        "type": "string",
+                        "description": "目标品类（可选），如：护肤/面膜",
+                    },
+                    "price_range": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "价格区间（可选），如 [50, 150]",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "返回推荐数量，默认 10",
+                    },
+                },
+                "required": ["business_goal", "problem_type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_action_plan",
+            "description": (
+                "根据经营诊断结果和推荐商品，生成可执行的行动计划任务列表。"
+                "当完成诊断和推荐后，用户希望知道「接下来具体怎么做」时调用。"
+                "需要先有 merchant_recommend_products 的结果。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "problem_type": {
+                        "type": "string",
+                        "description": "问题类型，如：CVR下降",
+                    },
+                    "affected_category": {
+                        "type": "string",
+                        "description": "受影响的品类",
+                    },
+                    "recommended_skus_json": {
+                        "type": "string",
+                        "description": "推荐 SKU 的 JSON 字符串，来自 merchant_recommend_products 的结果",
+                    },
+                },
+                "required": ["problem_type"],
+            },
+        },
+    },
 ]
 
 SYSTEM_PROMPT = """你是一个专业的内容电商 AI 经营助手，帮助商家解决运营增长问题。
@@ -90,14 +185,24 @@ SYSTEM_PROMPT = """你是一个专业的内容电商 AI 经营助手，帮助商
 - query_data：查询经营数据（GMV、CTR、CVR、漏斗等）
 - diagnose_content：诊断内容质量（标题、封面、脚本）
 - search_cases：检索爆款案例
-- select_products：AI选品推荐
+- select_products：AI选品推荐（通用选品）
 - query_knowledge：查询运营知识库（平台规则、SOP）
+- merchant_recommend_products：多模态选品推荐（基于经营目标和问题类型精准推荐 SKU）
+- get_review_insight：商品评论洞察（卖点 / 痛点 / 内容角度 / 转化风险）
+- generate_action_plan：生成行动计划任务列表
 
 工作原则：
-1. 对于需要数据支撑的问题，先调用工具获取真实数据，再给出分析
-2. 回答要包含具体数字，不说空话
-3. 给出1-3条可立即执行的建议
-4. 多步骤问题可以依次调用多个工具"""
+1. 对于需要数据支撑的问题，先调用 query_data 获取真实数据，再给出分析
+2. 当商家问「GMV下滑」「推什么品」时，使用标准诊断流程
+3. 回答要包含具体数字，不说空话
+4. 给出可立即执行的具体建议，不只给方向
+5. 多步骤问题可以依次调用多个工具，每步结果作为下一步的输入
+
+标准诊断流程（当用户问经营问题时）：
+Step 1: query_data 查询近期 GMV/CTR/CVR 变化
+Step 2: merchant_recommend_products 传入诊断结果推荐 SKU
+Step 3: get_review_insight 对 Top 推荐商品做评论洞察（丰富内容方向建议）
+Step 4: generate_action_plan 生成具体任务清单"""
 
 
 class EcommerceAgent:
@@ -113,6 +218,7 @@ class EcommerceAgent:
 
         self._history: List[Dict] = []   # 长期记忆
         self._short_ctx: List[Dict] = [] # 短期上下文
+        self._last_action_plan: List[Dict] = []  # 最近一次行动计划，供复盘使用
 
     def _call_tool(self, tool_name: str, params: Dict) -> str:
         try:
@@ -163,6 +269,32 @@ class EcommerceAgent:
             elif tool_name == "query_knowledge" and self._rag_kb:
                 result = self._rag_kb.answer(params["question"])
                 return f"知识库回答:\n{result['answer']}\n\n来源: {', '.join(result['sources'])}"
+
+            elif tool_name == "get_review_insight":
+                return get_review_insight(params)
+
+            elif tool_name == "merchant_recommend_products":
+                return recommend_products(params)
+
+            elif tool_name == "generate_action_plan":
+                skus_raw = params.get("recommended_skus_json", "[]")
+                try:
+                    skus = json.loads(skus_raw) if isinstance(skus_raw, str) else skus_raw
+                except Exception:
+                    skus = []
+                diagnosis = {
+                    "problem_type": params.get("problem_type", "综合指标下滑"),
+                    "affected_category": params.get("affected_category", ""),
+                }
+                tasks = generate_action_plan(
+                    diagnosis=diagnosis,
+                    recommended_skus=skus,
+                    use_llm=True,
+                    llm_client=self._client,
+                )
+                # 保存最近一次行动计划供后续复盘使用
+                self._last_action_plan = tasks
+                return format_action_plan_text(tasks)
 
             else:
                 return f"工具 [{tool_name}] 暂不可用"
