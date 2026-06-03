@@ -23,17 +23,17 @@ REQUEST_TIMEOUT = int(os.getenv("RECOMMENDER_TIMEOUT", "10"))
 
 
 
-def _local_recommend(params: dict) -> str:
+def _local_recommend_raw(params: dict) -> tuple[str, list[dict]]:
     """
-    本地模式：直接调用 project2_infra 的 LightGBM 排序链路。
+    本地模式核心逻辑，返回 (格式化文本, 结构化SKU列表)。
 
-    优先保证 Demo 可运行性，不依赖外部服务。
+    拆分为 raw 版本，让调用方能同时拿到文本和结构化数据，
+    解决行动计划生成器拿不到具体 SKU 的问题。
     """
     try:
         from project2_infra.lightgbm_ranker import LGBMRanker
         from project2_infra.hybrid_search import HybridSearch
         from project2_infra.embedder import Embedder
-        from config import PROCESSED_DIR
 
         embedder = Embedder()
         query = (
@@ -46,30 +46,37 @@ def _local_recommend(params: dict) -> str:
         searcher = HybridSearch()
         ranker = LGBMRanker()
         if not ranker.is_trained():
-            return _fallback_recommend(params)
+            return _fallback_recommend(params), []
 
         ranker.load()
         candidates = searcher.search(query, query_vec, filters=None)
         if not candidates:
-            return _fallback_recommend(params)
+            return _fallback_recommend(params), []
 
         # 价格过滤
         price_range = params.get("price_range", [0, 9999])
         candidates = [
             c for c in candidates
             if price_range[0] <= c.get("price", 50) <= price_range[1]
-        ] or candidates  # 过滤后为空则退化
+        ] or candidates
 
         query_meta = {"category": params.get("target_category", "")}
         ranked = ranker.rank(candidates, query_meta)
         ranked = ranker.explain(ranked, query_meta)
 
         top_k = params.get("top_k", 10)
-        return _format_local(ranked[:top_k], params)
+        top_ranked = ranked[:top_k]
+        return _format_local(top_ranked, params), _extract_skus_from_local(top_ranked)
 
     except Exception as e:
         logger.error(f"本地推荐失败: {e}")
-        return _fallback_recommend(params)
+        return _fallback_recommend(params), []
+
+
+def _local_recommend(params: dict) -> str:
+    """向后兼容入口，内部调用 _local_recommend_raw。"""
+    text, _ = _local_recommend_raw(params)
+    return text
 
 
 def _fallback_recommend(params: dict) -> str:
@@ -191,7 +198,9 @@ def recommend_products(params: dict) -> str:
         _last_recommended_skus = []
         return result
     else:
-        return _local_recommend(params)
+        text, skus = _local_recommend_raw(params)
+        _last_recommended_skus = skus   # 本地模式同样缓存结构化 SKU
+        return text
 
 
 def _remote_recommend_raw(params: dict) -> dict | str:
