@@ -193,13 +193,21 @@ def recommend_products(params: dict) -> str:
     if USE_REMOTE:
         result = _remote_recommend_raw(params)
         if isinstance(result, dict):
+            # 远程成功：缓存结构化 SKU
             _last_recommended_skus = _extract_skus_from_remote(result)
             return _format_response(result)
+        if result == "__local_fallback__":
+            # 远程连接失败：降级到本地，同样缓存结构化 SKU
+            logger.info("降级为本地推荐模式")
+            text, skus = _local_recommend_raw(params)
+            _last_recommended_skus = skus
+            return text
+        # 其他远程错误（非连接问题）：清空缓存，返回错误文本
         _last_recommended_skus = []
         return result
     else:
         text, skus = _local_recommend_raw(params)
-        _last_recommended_skus = skus   # 本地模式同样缓存结构化 SKU
+        _last_recommended_skus = skus
         return text
 
 
@@ -222,8 +230,8 @@ def _remote_recommend_raw(params: dict) -> dict | str:
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.ConnectionError:
-        logger.warning("推荐服务未启动，自动切换到本地模式")
-        return _local_recommend(params)
+        logger.warning("推荐服务未启动，返回本地降级标记")
+        return "__local_fallback__"   # 由 recommend_products 处理，保证 SKU 缓存不丢
     except Exception as e:
         logger.error(f"远程推荐服务调用失败: {e}")
         return f"推荐服务暂时不可用，错误：{e}"
