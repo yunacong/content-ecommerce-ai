@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from openai import OpenAI
 from loguru import logger
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
-from project1_app.tools.merchant_rec_tool import recommend_products
+from project1_app.tools.merchant_rec_tool import recommend_products, get_last_recommended_skus
 from project1_app.tools.review_insight_tool import get_review_insight
 from project1_app.action_plan.task_generator import generate_action_plan, format_action_plan_text
 
@@ -218,7 +218,8 @@ class EcommerceAgent:
 
         self._history: List[Dict] = []   # 长期记忆
         self._short_ctx: List[Dict] = [] # 短期上下文
-        self._last_action_plan: List[Dict] = []  # 最近一次行动计划，供复盘使用
+        self._last_action_plan: List[Dict] = []       # 最近一次行动计划，供复盘使用
+        self._last_recommended_skus: List[Dict] = []   # 最近一次推荐结果，供行动计划直接引用
 
     def _call_tool(self, tool_name: str, params: Dict) -> str:
         try:
@@ -274,7 +275,10 @@ class EcommerceAgent:
                 return get_review_insight(params)
 
             elif tool_name == "merchant_recommend_products":
-                return recommend_products(params)
+                result = recommend_products(params)
+                # 同步缓存到实例（双保险，防止模块级缓存在多实例场景失效）
+                self._last_recommended_skus = get_last_recommended_skus()
+                return result
 
             elif tool_name == "generate_action_plan":
                 skus_raw = params.get("recommended_skus_json", "[]")
@@ -282,6 +286,12 @@ class EcommerceAgent:
                     skus = json.loads(skus_raw) if isinstance(skus_raw, str) else skus_raw
                 except Exception:
                     skus = []
+                # LLM 未能传入结构化 SKU 时，自动读取最近一次推荐结果
+                if not skus:
+                    skus = get_last_recommended_skus()
+                # 也尝试读 Agent 实例内缓存
+                if not skus:
+                    skus = getattr(self, "_last_recommended_skus", [])
                 diagnosis = {
                     "problem_type": params.get("problem_type", "综合指标下滑"),
                     "affected_category": params.get("affected_category", ""),
